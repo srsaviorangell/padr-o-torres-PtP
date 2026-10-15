@@ -1,0 +1,108 @@
+/* Verificação de comportamento e captura do modelo real no Chromium. */
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const {pathToFileURL}=require('url');
+const runtime=process.env.CODEX_NODE_MODULES||'C:/Users/TESTE/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
+const {chromium}=require(path.join(runtime,'playwright'));
+const model=require('./src/layout.js');
+const config=JSON.parse(fs.readFileSync('config.json','utf8'));
+const initial=model.calculate(config);
+assert.deepEqual(initial.errors,[]);
+for(const change of [
+  {BOX_NETWORK_WIDTH:300},{BOX_POWER_DEPTH:200},{BATTERY_COUNT:4},{BOX_POWER_HEIGHT:300},
+  {FIBER_BEND_RADIUS:90},{BOX_GAP:50},{ONU_WIDTH:-1},{BATTERY_COUNT:1.5}
+]){const cfg=structuredClone(config);Object.assign(cfg.parameters,change);assert(model.calculate(cfg).errors.length>0,JSON.stringify(change));}
+(async()=>{
+  fs.mkdirSync('output/views',{recursive:true});
+  const browser=await chromium.launch({channel:'chrome',headless:true,args:['--enable-unsafe-swiftshader','--use-angle=swiftshader','--ignore-gpu-blocklist']});
+  const context=await browser.newContext({viewport:{width:1500,height:1150},deviceScaleFactor:1});
+  const page=await context.newPage();const errors=[],external=[];
+  page.on('pageerror',err=>errors.push(err.message));
+  await page.route('https://**',route=>{external.push(route.request().url());return route.abort();});
+  await page.goto(pathToFileURL(path.resolve('index.html')).href);
+  await page.waitForFunction(()=>window.__rackReady===true);
+  await page.screenshot({path:'output/preview-desktop.png',fullPage:true});
+  const stage=page.locator('#stage');
+  for(const view of ['iso','front','side','top','rear']){
+    await page.locator(`[data-view="${view}"]`).click();
+    await stage.screenshot({path:`output/views/${view}.png`});
+  }
+  await page.locator('[data-view="iso"]').click();
+  await page.locator('[data-mode="closed"]').click();
+  await stage.screenshot({path:'output/views/closed.png'});
+  await page.locator('[data-mode="exploded"]').click();
+  await stage.screenshot({path:'output/views/exploded.png'});
+  await page.locator('[data-mode="inside"]').click();
+  await page.locator('#show-flow').check();
+  await stage.screenshot({path:'output/views/airflow.png'});
+  await page.locator('#show-flow').uncheck();
+  await page.locator('#focus-box').selectOption('network');
+  await page.locator('[data-view="front"]').click();
+  await stage.screenshot({path:'output/views/network.png'});
+  await page.locator('#focus-box').selectOption('power');
+  await stage.screenshot({path:'output/views/power.png'});
+  await page.locator('[data-device="ups"]').click();
+  assert((await page.locator('#selection').innerText()).includes('160 × 230 × 280'));
+  await page.locator('#focus-box').selectOption('all');
+  await page.locator('[data-view="iso"]').click();
+  await page.locator('[data-tab="parameters"]').click();
+  await page.locator('input[name="BOX_NETWORK_WIDTH"]').fill('300');
+  await page.getByRole('button',{name:'Aplicar medidas',exact:true}).click();
+  assert((await page.locator('#validation').innerText()).includes('Medidas não aplicadas'));
+  assert.equal(await page.evaluate(()=>ProjectAPI.getConfig().parameters.BOX_NETWORK_WIDTH),600);
+  await page.locator('input[name="BOX_NETWORK_WIDTH"]').fill('700');
+  await page.getByRole('button',{name:'Aplicar medidas',exact:true}).click();
+  assert.equal(await page.evaluate(()=>ProjectAPI.getConfig().parameters.BOX_NETWORK_WIDTH),700);
+  assert((await page.locator('#dimension-summary').textContent()).includes('700 × 400 × 600'));
+  await page.getByRole('button',{name:'Restaurar',exact:true}).click();
+  // O modelo rejeita importação incompleta e conserva o último estado válido.
+  assert.equal(await page.evaluate(()=>ProjectAPI.applyConfig({parameters:{BOX_NETWORK_WIDTH:1}})),false);
+  await page.getByRole('button',{name:'Restaurar',exact:true}).click();
+  const dlPromise=page.waitForEvent('download');await page.locator('#export-config').click();const dl=await dlPromise;
+  await dl.saveAs(path.resolve('output/config-exportada.json'));
+  assert.deepEqual(JSON.parse(fs.readFileSync('output/config-exportada.json','utf8')).parameters,config.parameters);
+  await page.locator('#import-config').setInputFiles(path.resolve('output/config-exportada.json'));
+  assert.equal(await page.evaluate(()=>ProjectAPI.getConfig().parameters.BOX_NETWORK_WIDTH),600);
+  const imgPromise=page.waitForEvent('download');await page.locator('#export-image').click();const img=await imgPromise;
+  await img.saveAs(path.resolve('output/imagem-exportada.png'));
+  assert(fs.statSync('output/imagem-exportada.png').size>10000);
+  await page.locator('[data-tab="equipment"]').click();
+  assert((await page.locator('#measurement-cards').innerText()).includes('13,50 U'));
+  assert((await page.locator('#measurement-cards').innerText()).includes('9,00 U'));
+  assert.equal(await page.evaluate(()=>ProjectAPI.getConfig().connections.length),12);
+  await page.locator('[data-tab="editor"]').click();
+  await page.locator('#edit-device').selectOption('onu');
+  await page.locator('#pos-x').fill('20');
+  await page.locator('#apply-position').click();
+  assert.equal(await page.evaluate(()=>ProjectAPI.getLayout().devices.find(d=>d.id==='onu').x),20);
+  assert.equal(await page.evaluate(()=>ProjectAPI.getRoutes().find(c=>c.id==='onu-switch').points[0][0]),-362.5);
+  await page.locator('#pos-x').fill('999');await page.locator('#apply-position').click();
+  assert.equal(await page.evaluate(()=>ProjectAPI.getLayout().devices.find(d=>d.id==='onu').x),20);
+  await page.locator('#drag-devices').check();await page.locator('#cv').scrollIntoViewIfNeeded();
+  const point=await page.evaluate(()=>ProjectAPI.screenPoint('onu'));
+  await page.mouse.move(point.x,point.y);await page.mouse.down();await page.mouse.move(point.x+8,point.y,{steps:3});await page.mouse.up();
+  assert((await page.evaluate(()=>ProjectAPI.getLayout().devices.find(d=>d.id==='onu').x))>20);
+  await page.locator('#edit-cable').selectOption('onu-switch');await page.locator('#cable-offset-x').fill('-100');await page.locator('#apply-cable').click();
+  assert.equal(await page.evaluate(()=>ProjectAPI.getConfig().connections.find(c=>c.id==='onu-switch').offsetX),-100);
+  await page.locator('#new-cable').click();await page.locator('#cable-type').selectOption('data');await page.locator('#cable-from').selectOption('switch:port3');await page.locator('#cable-to').selectOption('poe:port3');await page.locator('#apply-cable').click();
+  assert.equal(await page.evaluate(()=>ProjectAPI.getConfig().connections.length),13);
+  await page.locator('#remove-cable').click();assert.equal(await page.evaluate(()=>ProjectAPI.getConfig().connections.length),12);
+  const htmlPromise=page.waitForEvent('download');await page.locator('#save-editable-html').click();const edited=await htmlPromise;await edited.saveAs(path.resolve('output/exemplo-editavel.html'));
+  const savedConfig=await page.evaluate(()=>ProjectAPI.getConfig());
+  const restored=await context.newPage();restored.on('pageerror',err=>errors.push(err.message));await restored.goto(pathToFileURL(path.resolve('output/exemplo-editavel.html')).href);await restored.waitForFunction(()=>window.__rackReady===true);
+  assert.deepEqual(await restored.evaluate(()=>ProjectAPI.getConfig()),savedConfig);await restored.close();
+  await page.screenshot({path:'output/editor.png',fullPage:true});
+  await page.locator('#drag-devices').uncheck();await page.evaluate(()=>ProjectAPI.applyConfig(window.INITIAL_CONFIG));
+  await page.locator('[data-tab="equipment"]').click();
+  await page.locator('[data-doc="materials"]').click();assert.equal(await page.locator('#bom-body tr').count(),18);
+  await page.locator('[data-doc="pending"]').click();assert(await page.getByRole('heading',{name:'Dados necessários para versão final'}).isVisible());
+  await page.locator('[data-doc="architecture"]').click();
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'output/preview-mobile.png',fullPage:true});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+  await page.setViewportSize({width:1500,height:1150});
+  await page.locator('[data-view="iso"]').click();
+  await page.screenshot({path:'output/preview-desktop.png',fullPage:true});
+  const result={status:'passed',config,htmlHash:require('crypto').createHash('sha256').update(fs.readFileSync('index.html')).digest('hex'),checks:['geometria inicial','8 combinações incompatíveis','vistas e modos','seleção','edição válida e inválida','importação e exportação JSON','exportação PNG','BOM e pendências','layout móvel sem transbordamento','funcionamento offline','medidas em metros e U','posicionamento numérico e rejeição','arrastar equipamento','cabos acompanham posições','editar e criar conexão','remover conexão','HTML editado reabre com organização salva'],consoleErrors:errors,networkRequests:external,layout:initial};
+  fs.writeFileSync('output/verification.json',JSON.stringify(result,null,2));
+  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+  await browser.close();console.log('Verificações concluídas: '+result.checks.length+' grupos; sem erros de JavaScript ou dependências externas.');
+})().catch(e=>{console.error(e);process.exit(1)});

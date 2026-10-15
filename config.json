@@ -1,0 +1,47 @@
+{
+  "project": {"name": "Estações modulares", "client": "A confirmar", "location": "A confirmar", "revision": "Conceito 02", "date": "15/10/2026"},
+  "parameters": {
+    "BOX_NETWORK_WIDTH": 600, "BOX_NETWORK_HEIGHT": 400, "BOX_NETWORK_DEPTH": 600,
+    "BOX_POWER_WIDTH": 700, "BOX_POWER_HEIGHT": 600, "BOX_POWER_DEPTH": 600,
+    "BOX_GAP": 240, "WALL_THICKNESS": 3, "PANEL_MARGIN": 30, "PANEL_BACK_GAP": 20,
+    "SWITCH_POE_WIDTH": 300, "SWITCH_POE_HEIGHT": 44, "SWITCH_POE_DEPTH": 180,
+    "SWITCH_WIDTH": 280, "SWITCH_HEIGHT": 44, "SWITCH_DEPTH": 160,
+    "ONU_WIDTH": 150, "ONU_HEIGHT": 35, "ONU_DEPTH": 110,
+    "UPS_WIDTH": 160, "UPS_HEIGHT": 230, "UPS_DEPTH": 280,
+    "BATTERY_WIDTH": 230, "BATTERY_HEIGHT": 180, "BATTERY_DEPTH": 180,
+    "BATTERY_COUNT": 1, "EQUIPMENT_GAP": 20, "CHANNEL_WIDTH": 30,
+    "SIDE_SERVICE_WIDTH": 85, "POWER_SIDE_SERVICE_WIDTH": 55, "BOTTOM_SERVICE_HEIGHT": 45, "CONNECTOR_CLEARANCE": 45,
+    "MAINTENANCE_FRONT": 600, "AIR_CLEARANCE": 15, "EXPANSION_PERCENT": 25,
+    "FIBER_BEND_RADIUS": 35, "ROOF_OVERHANG": 45, "ROOF_AIR_GAP": 30,
+    "FAN_SIZE": 80, "VENT_HEIGHT": 100, "CONDUIT_RADIUS": 14,
+    "PDU_WIDTH": 42, "PDU_HEIGHT": 220, "PDU_DEPTH": 45,
+    "PROTECTION_WIDTH": 150, "PROTECTION_HEIGHT": 70, "PROTECTION_DEPTH": 65,
+    "DISTRIBUTION_WIDTH": 65, "DISTRIBUTION_HEIGHT": 90, "DISTRIBUTION_DEPTH": 65,
+    "SWITCH_PORTS": 8, "POE_PORTS": 8
+  },
+  "placements": {},
+  "connections": [
+    {"id":"fiber-in","name":"Fibra de entrada → ONU","type":"fiber","from":"entry:fiber","to":"onu:fiber","offsetX":0,"offsetZ":20},
+    {"id":"onu-switch","name":"ONU LAN → Switch porta 1","type":"data","from":"onu:lan","to":"switch:port1","offsetX":-150,"offsetZ":30},
+    {"id":"switch-poe","name":"Switch porta 2 → PoE porta 1","type":"data","from":"switch:port2","to":"poe:port1","offsetX":-170,"offsetZ":40},
+    {"id":"poe-output","name":"PoE porta 2 → Saída Ethernet","type":"data","from":"poe:port2","to":"entry:ethernet","offsetX":-130,"offsetZ":50},
+    {"id":"ac-in","name":"Entrada elétrica → Proteções","type":"power","from":"entry:ac","to":"protection:in","offsetX":230,"offsetZ":25},
+    {"id":"protected-ups","name":"Proteções → Nobreak","type":"power","from":"protection:out","to":"ups:in","offsetX":210,"offsetZ":40},
+    {"id":"battery-ups","name":"Bateria → Nobreak (circuito próprio)","type":"battery","from":"battery0:dc","to":"ups:battery","offsetX":0,"offsetZ":20},
+    {"id":"ups-dist","name":"Nobreak → Distribuição","type":"power","from":"ups:out","to":"distribution:in","offsetX":70,"offsetZ":25},
+    {"id":"interlink","name":"Distribuição → Régua pelo conduíte","type":"power","from":"distribution:out","to":"pdu:in","offsetX":0,"offsetZ":0},
+    {"id":"pdu-onu","name":"Régua saída 1 → ONU","type":"power","from":"pdu:out1","to":"onu:power","offsetX":90,"offsetZ":25},
+    {"id":"pdu-switch","name":"Régua saída 2 → Switch","type":"power","from":"pdu:out2","to":"switch:power","offsetX":110,"offsetZ":35},
+    {"id":"pdu-poe","name":"Régua saída 3 → Switch PoE","type":"power","from":"pdu:out3","to":"poe:power","offsetX":100,"offsetZ":45}
+  ],
+  "assumptions": [
+    "Dimensões externas das caixas informadas pelo usuário. Equipamentos, suportes e folgas continuam genéricos, em milímetros, sem marcas definidas.",
+    "U mostrado é a conversão da altura externa por 44,45 mm. Não indica capacidade útil de rack nem montagem padrão 19 polegadas.",
+    "Ligações representam conexões funcionais, não um esquema elétrico executivo. Fontes ou adaptadores exigidos pelos equipamentos reais ainda precisam ser incluídos.",
+    "Bateria representada por um bloco genérico. Química, massa, ventilação e compatibilidade com o nobreak estão pendentes.",
+    "A reserva corresponde a uma faixa da área central útil do painel, após descontar margens e rotas laterais. Não é uma medição do volume livre.",
+    "Cabos e portas são ilustrativos. As rotas não constituem projeto executivo de cabeamento.",
+    "Venezianas, defletores e ventoinhas são conceitos. Não há simulação térmica nem grau IP certificado.",
+    "Materiais, espessuras, ancoragem, proteção elétrica e capacidade dos suportes dependem de validação profissional."
+  ]
+}
